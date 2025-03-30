@@ -7,7 +7,6 @@ const NoteSchema = new mongoose.Schema({
     },
     description: {
         type: String
-
     },
     fileUrl: {
         type: String,
@@ -19,12 +18,13 @@ const NoteSchema = new mongoose.Schema({
         required: true
     },
     category: {
-
-        type: String
+        type: String,
+        required : true
     },
-    tags: [
-        { type: String }
-    ],
+    tags: [{ type: String }],
 }, { timestamps: true });
+
+// Full-text search index
+NoteSchema.index({ title: "text", description: "text", category: "text" });
 
 export const Note = mongoose.model("Note", NoteSchema);

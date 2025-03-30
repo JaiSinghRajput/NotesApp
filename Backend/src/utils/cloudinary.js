@@ -1,6 +1,7 @@
 import { v2 as cloudinary } from "cloudinary";
-import fs from "fs";
-
+import { ApiError } from "./apiError.js";
+import dotenv from "dotenv";
+dotenv.config();
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -8,16 +9,24 @@ cloudinary.config({
 });
 
 const uploadOnCloudinary = async (pdfPath)=> {
-  if(!pdfPath) return
+  if(!pdfPath) return null;
   try {
     const result = await cloudinary.uploader.upload(pdfPath, {
       resource_type: "raw", 
       folder: "notes", 
     });
-    return result.secure_url;
+    console.log(result);
+    return result;
   } catch (error) {
-    return null;
+    throw new ApiError(500, error.message);
   }
 }
-
-export { uploadOnCloudinary };
+const deleteFromCloudinary = async (publicId) => {
+  try {
+    await cloudinary.uploader.destroy(publicId);
+    return true;
+  } catch (error) {
+    throw new ApiError(500, error.message);
+  }
+};
+export { uploadOnCloudinary,deleteFromCloudinary };
