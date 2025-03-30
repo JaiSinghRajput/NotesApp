@@ -153,15 +153,18 @@ const currentUser = asyncHandler(async (req,res)=>{
     else return res.json(new ApiResponse(200,"User fetched sucessfully",req.user))
 })
 const updateProfile = asyncHandler(async (req, res) => {
-    const { name, username, email,password } = req.body;
-    if (name||username||email) {
+    const { name, username, email } = req.body;
+    if (!name&&!username&&!email) {
         throw new ApiError(400, "at least one field is required");
     }
-   const user =  User.findByIdAndUpdate(req.user._id,{
-        $set:{name,
-            username:username.toLowerCase()
-            ,email:email.toLowerCase()}
-    },{new:true}).select("-password -refreshToken");
+    const updateFields = {};
+    if (name) updateFields.name = name;
+    if (username) updateFields.username = username.toLowerCase();
+    if (email) updateFields.email = email.toLowerCase();
+   const user =  await User.findByIdAndUpdate(req.user._id,
+    {$set:updateFields}
+     ,{new:true})
+     .select("-password -refreshToken");
     return res.status(200).json(new ApiResponse(200, user, "Profile updated successfully"));
 });
 const makeAdmin = asyncHandler(async (req, res) => {

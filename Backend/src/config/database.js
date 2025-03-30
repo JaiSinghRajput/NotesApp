@@ -10,7 +10,6 @@ const connectDB = asyncHandler(async () => {
     try {
         // Remove any trailing slash from the URI
         const cleanUri = uri.endsWith('/') ? uri.slice(0, -1) : uri;
-        
         // Connect to MongoDB with the database name in the URI
         await mongoose.connect(cleanUri);
         console.log("MongoDB connected successfully");
