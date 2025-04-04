@@ -4,6 +4,7 @@ import cors from "cors"; // ✅ Add CORS support
 import {authRoutes,notesRoutes,uploadsLogsRoutes,usersRoutes} from "./routes/index.routes.js"
 import { handleError } from "./middlewares/error.middlewares.js";
 import { verifyJWT } from "./middlewares/auth.middlewares.js";
+import { apiLimiter, authLimiter } from "./middlewares/rateLimit.middlewares.js";
 
 const app = express();
 
@@ -12,6 +13,10 @@ app.use(cors()); // Allow cross-origin requests
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Apply rate limiting
+app.use("/api/v1/", apiLimiter); // General API rate limiting
+app.use("/api/v1/auth", authLimiter); // Stricter rate limiting for auth routes
 
 // ✅ Route Definitions
 app.use("/api/v1/auth", authRoutes);

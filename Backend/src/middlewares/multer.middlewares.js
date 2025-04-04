@@ -1,4 +1,11 @@
 import multer from "multer";
+import { ApiError } from "../utils/apiError.js";
+
+// File size limit (10MB)
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+// Allowed file types
+const ALLOWED_FILE_TYPES = ['application/pdf'];
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -10,4 +17,38 @@ const storage = multer.diskStorage({
     cb(null,file.originalname);
   },
 });
-export const upload = multer({storage });
+
+// File filter function
+const fileFilter = (req, file, cb) => {
+  if (!ALLOWED_FILE_TYPES.includes(file.mimetype)) {
+    cb(new ApiError(400, "Only PDF files are allowed"), false);
+    return;
+  }
+  cb(null, true);
+};
+
+// Create multer upload instance with restrictions
+export const upload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+    files: 1 // Maximum 1 file per request
+  }
+});
+
+// Middleware to check user's file count
+export const checkUserFileCount = async (req, res, next) => {
+  try {
+    // Get user's file count from database
+    const userFileCount = await Note.countDocuments({ owner: req.user._id });
+    
+    if (userFileCount >= 100) {
+      throw new ApiError(400, "Maximum file limit (100) reached for your account");
+    }
+    
+    next();
+  } catch (error) {
+    next(error);
+  }
+};

@@ -11,9 +11,9 @@ const getAllNotes = asyncHandler(async (req, res,next) => {
   });
 
 const getUserNotes = asyncHandler(async (req, res) => {
-    const { id } = req.params;
+    const { id } = req.query;
     const notes = await Note.find({ uploadedBy: id||req.user?._id}).sort({ createdAt: -1 });
-    if (!notes.length === 0) throw new ApiError(404, "No notes uploaded by this user");
+    if (notes.length === 0) throw new ApiError(404, "No notes uploaded by this user");
     return res.status(200).json(new ApiResponse(200, "User's notes retrieved successfully", notes));
   });
   export {

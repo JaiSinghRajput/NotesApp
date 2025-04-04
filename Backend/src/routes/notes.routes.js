@@ -6,12 +6,17 @@ import {
     searchNotes,
 } from "../controllers/notes.controllers.js";
 import { checkPermissionToUpload } from "../middlewares/auth.middlewares.js";
-import { upload } from "../middlewares/multer.middlewares.js";
+import { upload, checkUserFileCount } from "../middlewares/multer.middlewares.js";
 
 const router = Router();
 
 // ✅ Upload a note (POST)
-router.route("/upload").post(checkPermissionToUpload, upload.single("pdfFile"), handleUpload);
+router.route("/upload").post(
+    checkPermissionToUpload,
+    checkUserFileCount,
+    upload.single("pdfFile"),
+    handleUpload
+);
 
 // ✅ Delete a note (DELETE)
 router.route("/:id").delete(handleDelete);
