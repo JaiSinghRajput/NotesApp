@@ -6,7 +6,6 @@ const storage = multer.diskStorage({
   },
 
   filename: function (req, file, cb) {
-    console.log(file);
     file.originalname = file.originalname.replace(".pdf", `${Date.now()}.pdf`);
     cb(null,file.originalname);
   },

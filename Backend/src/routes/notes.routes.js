@@ -11,15 +11,15 @@ import { upload } from "../middlewares/multer.middlewares.js";
 const router = Router();
 
 // ✅ Upload a note (POST)
-router.post("/upload", checkPermissionToUpload, upload.single("pdfFile"), handleUpload);
+router.route("/upload").post(checkPermissionToUpload, upload.single("pdfFile"), handleUpload);
 
 // ✅ Delete a note (DELETE)
-router.delete("/:id", handleDelete);
+router.route("/:id").delete(handleDelete);
 
 // ✅ Get note file URL (GET)
-router.get("/file/:id", getNoteFileUrl); // 🔄 Changed `_id` to `id` for consistency
+router.route("/file/:id").get(getNoteFileUrl); 
 
 // ✅ Search notes (GET)
-router.get("/search", searchNotes);
+router.route("/search").get(searchNotes);
 
 export default router;

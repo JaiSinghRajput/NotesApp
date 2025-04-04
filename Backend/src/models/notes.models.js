@@ -8,6 +8,10 @@ const NoteSchema = new mongoose.Schema({
     description: {
         type: String
     },
+    filePublicId: {
+        type: String,
+        required: true
+    },
     fileUrl: {
         type: String,
         required: true

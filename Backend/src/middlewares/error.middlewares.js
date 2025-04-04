@@ -2,7 +2,6 @@ import { ApiError } from "../utils/index.js";
 import mongoose from "mongoose";
 
 const handleError = (err, req, res, next) => {
-//   console.error(err);
 let error = err;
   if (!(err instanceof ApiError)) {
     const statusCode = err.statusCode || err instanceof mongoose.Error ? 400 : 500;

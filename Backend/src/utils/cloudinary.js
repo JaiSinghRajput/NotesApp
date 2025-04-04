@@ -15,7 +15,7 @@ const uploadOnCloudinary = async (pdfPath)=> {
       resource_type: "raw", 
       folder: "notes", 
     });
-    console.log(result);
+    console.log(`CLOUDINARY RESPONSE ON UPLOAD --- `,result);
     return result;
   } catch (error) {
     throw new ApiError(500, error.message);
@@ -23,8 +23,12 @@ const uploadOnCloudinary = async (pdfPath)=> {
 }
 const deleteFromCloudinary = async (publicId) => {
   try {
-    await cloudinary.uploader.destroy(publicId);
-    return true;
+    const response =  await cloudinary.uploader.destroy(publicId, {
+      resource_type: "raw", 
+      folder: "notes", 
+    });
+    console.log(`CLOUDINARY RESPONSE ON DELETE --- `,response);
+    return response;
   } catch (error) {
     throw new ApiError(500, error.message);
   }
