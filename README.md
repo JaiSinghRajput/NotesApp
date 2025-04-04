@@ -91,7 +91,8 @@ CLOUDINARY_API_SECRET=your_cloudinary_api_secret
 
 ### Development Dependencies
 - nodemon: ^3.0.0
+### API Documentation 
+For detailed API documentation, see [API Documentation](./API.md).
 
 ## License
-
 This project is licensed under the MIT License. 
