@@ -1,7 +1,7 @@
 import rateLimit from 'express-rate-limit';
 
 // Create a limiter for general API requests
-export const apiLimiter = rateLimit({
+const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // Limit each IP to 100 requests per windowMs
     message: {
@@ -14,7 +14,7 @@ export const apiLimiter = rateLimit({
 });
 
 // Create a stricter limiter for authentication endpoints
-export const authLimiter = rateLimit({
+const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // Limit each IP to 5 requests per windowMs
     message: {
@@ -25,3 +25,4 @@ export const authLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
 }); 
+export { apiLimiter, authLimiter };

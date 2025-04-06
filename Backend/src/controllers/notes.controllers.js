@@ -1,6 +1,5 @@
-import { ApiError, ApiResponse, asyncHandler } from "../utils/index.js";
-import { uploadOnCloudinary,deleteFromCloudinary } from "../utils/cloudinary.js";
-import { Note } from "../models/notes.models.js";
+import { ApiError, ApiResponse, asyncHandler,uploadOnCloudinary,deleteFromCloudinary } from "../utils/index.js";
+import { Note } from "../models/index.js";
 import fs from "fs";
 // import path from "path";
 const handleUpload = asyncHandler(async (req, res) => {

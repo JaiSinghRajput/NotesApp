@@ -1,6 +1,5 @@
-import { ApiError, ApiResponse, asyncHandler, options } from "../utils/index.js";
-import { User } from "../models/user.models.js";
-import { refreshAccessToken } from "../utils/tokensManager.js";
+import { ApiError, ApiResponse, asyncHandler, options ,refreshAccessToken} from "../utils/index.js";
+import { User } from "../models/index.js";
 
 const   logoutUser = asyncHandler(async (req, res) => {
     await User.findByIdAndUpdate(req.user._id,

@@ -1,8 +1,8 @@
 import multer from "multer";
-import { ApiError } from "../utils/apiError.js";
+import { ApiError } from "../utils/index.js";
 
 // File size limit (10MB)
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const MAX_FILE_SIZE = process.env.MAX_FILE_SIZE * 1024 * 1024;
 
 // Allowed file types
 const ALLOWED_FILE_TYPES = ['application/pdf'];
@@ -28,7 +28,7 @@ const fileFilter = (req, file, cb) => {
 };
 
 // Create multer upload instance with restrictions
-export const upload = multer({
+const upload = multer({
   storage,
   fileFilter,
   limits: {
@@ -38,11 +38,10 @@ export const upload = multer({
 });
 
 // Middleware to check user's file count
-export const checkUserFileCount = async (req, res, next) => {
+const checkUserFileCount = async (req, res, next) => {
   try {
     // Get user's file count from database
     const userFileCount = await Note.countDocuments({ owner: req.user._id });
-    
     if (userFileCount >= 100) {
       throw new ApiError(400, "Maximum file limit (100) reached for your account");
     }
@@ -52,3 +51,5 @@ export const checkUserFileCount = async (req, res, next) => {
     next(error);
   }
 };
+
+export {upload,checkUserFileCount}

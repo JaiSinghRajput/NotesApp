@@ -1,6 +1,5 @@
 import { User } from "../models/user.models.js";
-import { ApiError } from "./apiError.js";
-import { asyncHandler } from "./asyncHandler.js";
+import { ApiError,asyncHandler } from "./index.js";
 
 const generateAccessAndRefreshTokens = async (userId) => {
     try {

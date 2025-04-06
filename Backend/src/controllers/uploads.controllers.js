@@ -1,4 +1,4 @@
-import { Note } from "../models/notes.models.js";
+import { Note } from "../models/index.js";
 import { ApiResponse,ApiError,asyncHandler } from "../utils/index.js"
 const getAllNotes = asyncHandler(async (req, res,next) => {
     try {

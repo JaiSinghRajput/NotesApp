@@ -2,9 +2,7 @@ import express from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors"; // ✅ Add CORS support
 import {authRoutes,notesRoutes,uploadsLogsRoutes,usersRoutes} from "./routes/index.routes.js"
-import { handleError } from "./middlewares/error.middlewares.js";
-import { verifyJWT } from "./middlewares/auth.middlewares.js";
-import { apiLimiter, authLimiter } from "./middlewares/rateLimit.middlewares.js";
+import { handleError,apiLimiter, authLimiter,verifyJWT  } from "./middlewares/index.js";
 
 const app = express();
 

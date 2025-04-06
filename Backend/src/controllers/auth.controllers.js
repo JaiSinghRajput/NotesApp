@@ -1,6 +1,5 @@
-import { ApiError, ApiResponse, asyncHandler } from "../utils/index.js";
-import { User } from "../models/user.models.js";
-import { generateAccessAndRefreshTokens } from "../utils/tokensManager.js";
+import { ApiError, ApiResponse, asyncHandler ,generateAccessAndRefreshTokens} from "../utils/index.js";
+import { User } from "../models/index.js";
 
 const options = {
     httpOnly: true,

@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import {asyncHandler} from "../utils/asyncHandler.js";
+import {asyncHandler} from "../utils/index.js";
 
 const connectDB = asyncHandler(async () => {
     const uri = process.env.MONGODB_URI;

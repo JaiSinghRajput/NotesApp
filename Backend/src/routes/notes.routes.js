@@ -4,9 +4,8 @@ import {
     handleDelete,
     getNoteFileUrl,
     searchNotes,
-} from "../controllers/notes.controllers.js";
-import { checkPermissionToUpload } from "../middlewares/auth.middlewares.js";
-import { upload, checkUserFileCount } from "../middlewares/multer.middlewares.js";
+} from "../controllers/index.js";
+import { upload, checkUserFileCount,checkPermissionToUpload } from "../middlewares/index.js";
 
 const router = Router();
 
