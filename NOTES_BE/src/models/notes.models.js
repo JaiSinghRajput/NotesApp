@@ -1,0 +1,42 @@
+import mongoose from "mongoose";
+
+const NoteSchema = new mongoose.Schema({
+    title: {
+        type: String,
+        required: true
+    },
+    description: {
+        type: String
+    },
+    filePublicId: {
+        type: String,
+        required: true
+    },
+    fileUrl: {
+        type: String,
+        required: true
+    },
+    uploadedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+    },
+    category: {
+        type: String,
+        required: true
+    },
+    tags: [{ type: String }],
+    downloadCount: {
+        type: Number,
+        default: 0
+    },
+    viewCount: {
+        type: Number,
+        default: 0
+    },
+}, { timestamps: true });
+
+// Full-text search index
+NoteSchema.index({ title: "text", description: "text", category: "text" });
+
+export const Note = mongoose.model("Note", NoteSchema);
