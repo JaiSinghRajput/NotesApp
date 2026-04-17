@@ -16,6 +16,24 @@ const NoteSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    pdfSha256: {
+        type: String,
+        trim: true,
+        lowercase: true
+    },
+    pdfSimhash: {
+        type: String,
+        trim: true,
+        lowercase: true
+    },
+    pdfTextSampleLength: {
+        type: Number,
+        default: 0
+    },
+    duplicateCheckMeta: {
+        method: { type: String, default: "none" },
+        score: { type: Number, default: 0 }
+    },
     uploadedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
@@ -38,5 +56,7 @@ const NoteSchema = new mongoose.Schema({
 
 // Full-text search index
 NoteSchema.index({ title: "text", description: "text", category: "text" });
+NoteSchema.index({ pdfSha256: 1 }, { unique: true, sparse: true });
+NoteSchema.index({ pdfSimhash: 1 });
 
 export const Note = mongoose.model("Note", NoteSchema);

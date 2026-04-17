@@ -7,11 +7,19 @@ import {
 } from "../utils/index.js";
 import { Note } from "../models/index.js";
 import fs from "fs";
+import {
+  buildPdfSignature,
+  hammingDistanceHex64,
+  jaccardSimilarity,
+} from "../utils/duplicateDetector.js";
 
 // ================== UPLOAD NOTE ==================
 const handleUpload = asyncHandler(async (req, res) => {
   const { title, description, category, tags } = req.body;
   const { file } = req;
+  const enableAiDuplicateCheck =
+    (process.env.ENABLE_AI_DUPLICATE_CHECK || "true").toLowerCase() === "true";
+  const similarityThreshold = Number(process.env.DUPLICATE_SIMILARITY_THRESHOLD || 0.9);
 
   if (req.user.role !== 'admin') {
     throw new ApiError(403, "Only admins can upload notes");
@@ -25,15 +33,68 @@ const handleUpload = asyncHandler(async (req, res) => {
     throw new ApiError(400, "No file uploaded");
   }
 
+  const extractedTags = tags ? tags.split(",").map((tag) => tag.trim()).filter(Boolean) : [];
+
+  let signature;
   let fileUrl;
   let uploadRes;
 
   try {
+    signature = await buildPdfSignature(file.path);
+
+    const exactDuplicate = await Note.findOne({ pdfSha256: signature.sha256 })
+      .select("_id title uploadedBy")
+      .populate("uploadedBy", "name email");
+
+    if (exactDuplicate) {
+      throw new ApiError(
+        409,
+        `Duplicate PDF detected. Existing note: ${exactDuplicate.title} (${exactDuplicate._id})`
+      );
+    }
+
+    if (enableAiDuplicateCheck && signature.simhash) {
+      const candidates = await Note.find({ pdfSimhash: { $exists: true, $ne: null } })
+        .select("_id title description tags pdfSimhash")
+        .limit(300);
+
+      const incomingMeta = `${title} ${description || ""} ${extractedTags.join(" ")}`;
+      let bestCandidate = null;
+      let bestScore = 0;
+
+      for (const candidate of candidates) {
+        if (!candidate.pdfSimhash) continue;
+
+        const distance = hammingDistanceHex64(signature.simhash, candidate.pdfSimhash);
+        const simhashSimilarity = Math.max(0, 1 - distance / 64);
+        const candidateMeta = `${candidate.title} ${candidate.description || ""} ${(candidate.tags || []).join(" ")}`;
+        const metadataSimilarity = jaccardSimilarity(incomingMeta, candidateMeta);
+
+        const score = simhashSimilarity * 0.75 + metadataSimilarity * 0.25;
+        if (score > bestScore) {
+          bestScore = score;
+          bestCandidate = candidate;
+        }
+      }
+
+      if (bestCandidate && bestScore >= similarityThreshold) {
+        throw new ApiError(
+          409,
+          `Potential duplicate detected (score: ${bestScore.toFixed(3)}). Similar note ID: ${bestCandidate._id}`
+        );
+      }
+    }
+
     uploadRes = await uploadOnCloudinary(file.path);
     if (!uploadRes?.secure_url) {
       throw new ApiError(500, "Error uploading file to Cloudinary");
     }
     fileUrl = uploadRes.secure_url;
+  } catch (error) {
+    if (uploadRes?.public_id) {
+      await deleteFromCloudinary(uploadRes.public_id);
+    }
+    throw error;
   } finally {
     // Always attempt to delete the temporary file
     try {
@@ -43,16 +104,21 @@ const handleUpload = asyncHandler(async (req, res) => {
     }
   }
 
-  const ExtractedTags = tags ? tags.split(",").map((tag) => tag.trim()) : [];
-
   try {
     const note = await Note.create({
       title,
       description,
       category,
-      tags: ExtractedTags,
+      tags: extractedTags,
       filePublicId: uploadRes.public_id,
       fileUrl,
+      pdfSha256: signature?.sha256,
+      pdfSimhash: signature?.simhash,
+      pdfTextSampleLength: signature?.extractedText?.length || 0,
+      duplicateCheckMeta: {
+        method: enableAiDuplicateCheck ? "hash+similarity" : "hash-only",
+        score: 0,
+      },
       uploadedBy: req.user._id,
     });
 
