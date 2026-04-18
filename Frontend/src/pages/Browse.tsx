@@ -1,40 +1,53 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Filter, Grid, List, Loader2, X } from 'lucide-react';
+import { Search, Grid, List, Loader2, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { NoteCard } from '../components/NoteCard';
 import apiClient from '../api/apiClient';
 import { cn } from '../utils/cn';
+import { academicCourses, getCourseBranches, semesterOptions } from '../constants/academicHierarchy';
 
 export const Browse = () => {
     const [searchParams] = useSearchParams();
     const [searchQuery, setSearchQuery] = useState(searchParams.get('query') || '');
-    const [selectedCategory, setSelectedCategory] = useState(searchParams.get('category') || 'All');
+    const [selectedCourse, setSelectedCourse] = useState(searchParams.get('course') || '');
+    const [selectedBranch, setSelectedBranch] = useState(searchParams.get('branch') || '');
+    const [selectedSemester, setSelectedSemester] = useState(searchParams.get('semester') || '');
+    const [selectedSubject, setSelectedSubject] = useState(searchParams.get('subject') || searchParams.get('category') || '');
+    const [selectedUnit, setSelectedUnit] = useState(searchParams.get('unit') || '');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-    const { data: categories } = useQuery({
-        queryKey: ['categories'],
+    const branchOptions = selectedCourse ? getCourseBranches(selectedCourse) : [];
+
+    const { data: notes = [], isLoading } = useQuery<any[], Error>({
+        queryKey: ['notes', searchQuery, selectedCourse, selectedBranch, selectedSemester, selectedSubject, selectedUnit],
         queryFn: async () => {
-            const res = await apiClient.get('/notes/categories');
-            return ['All', ...res.data.data];
-        }
+            const params = new URLSearchParams();
+            params.set('limit', '1000');
+            if (searchQuery) params.set('query', searchQuery);
+            if (selectedCourse) params.set('course', selectedCourse);
+            if (selectedBranch) params.set('branch', selectedBranch);
+            if (selectedSemester) params.set('semester', selectedSemester);
+            if (selectedSubject) params.set('subject', selectedSubject);
+            if (selectedUnit) params.set('unit', selectedUnit);
+
+            const res = await apiClient.get(`/notes?${params.toString()}`);
+            return res.data?.data?.notes ?? [];
+        },
     });
 
-    const { data: notes, isLoading } = useQuery({
-        queryKey: ['notes', searchQuery, selectedCategory],
-        queryFn: async () => {
-            let url = searchQuery ? `/notes/search?query=${searchQuery}` : '/notes';
-            const res = await apiClient.get(url);
-            let data = res.data.data;
-            let results = Array.isArray(data) ? data : (data.notes || []);
+    const subjectOptions = useMemo(() => {
+        const set = new Set<string>();
+        notes.forEach((n: any) => { if (n.category) set.add(n.category); });
+        return Array.from(set).sort();
+    }, [notes]);
 
-            if (selectedCategory !== 'All') {
-                results = results.filter((n: any) => n.category === selectedCategory);
-            }
-            return results;
-        }
-    });
+    const unitOptions = useMemo(() => {
+        const set = new Set<string>();
+        notes.forEach((n: any) => { if (n.unit) set.add(n.unit); });
+        return Array.from(set).sort();
+    }, [notes]);
 
     return (
         <div className="space-y-8 pb-20">
@@ -65,17 +78,76 @@ export const Browse = () => {
                 </div>
 
                 <div className="flex gap-3">
-                    <div className="relative">
-                        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary" size={16} />
-                        <select
-                            value={selectedCategory}
-                            onChange={(e) => setSelectedCategory(e.target.value)}
-                            className="bg-surface border border-white/5 rounded-2xl pl-10 pr-8 py-4 appearance-none focus:outline-none focus:ring-2 focus:ring-primary/50 text-sm font-medium cursor-pointer"
-                        >
-                            {categories?.map((cat: string) => (
-                                <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                        </select>
+                    <div className="flex gap-2 items-center">
+                        <div className="relative">
+                            <label className="sr-only">Course</label>
+                            <select
+                                value={selectedCourse}
+                                onChange={(e) => { setSelectedCourse(e.target.value); setSelectedBranch(''); }}
+                                className="bg-surface border border-white/5 rounded-2xl pl-4 pr-4 py-3 appearance-none text-sm font-medium cursor-pointer"
+                            >
+                                <option value="">All Courses</option>
+                                {academicCourses.map((c) => (
+                                    <option key={c.value} value={c.value}>{c.label}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="relative">
+                            <label className="sr-only">Branch</label>
+                            <select
+                                value={selectedBranch}
+                                onChange={(e) => setSelectedBranch(e.target.value)}
+                                className="bg-surface border border-white/5 rounded-2xl pl-4 pr-4 py-3 appearance-none text-sm font-medium cursor-pointer"
+                            >
+                                <option value="">All Branches</option>
+                                {branchOptions.map((b) => (
+                                    <option key={b.value} value={b.value}>{b.label}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="relative">
+                            <label className="sr-only">Semester</label>
+                            <select
+                                value={selectedSemester}
+                                onChange={(e) => setSelectedSemester(e.target.value)}
+                                className="bg-surface border border-white/5 rounded-2xl pl-4 pr-4 py-3 appearance-none text-sm font-medium cursor-pointer"
+                            >
+                                <option value="">All Semesters</option>
+                                {semesterOptions.map((s) => (
+                                    <option key={s} value={s}>{s}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="relative">
+                            <label className="sr-only">Subject</label>
+                            <select
+                                value={selectedSubject}
+                                onChange={(e) => setSelectedSubject(e.target.value)}
+                                className="bg-surface border border-white/5 rounded-2xl pl-4 pr-4 py-3 appearance-none text-sm font-medium cursor-pointer"
+                            >
+                                <option value="">All Subjects</option>
+                                {subjectOptions.map((s) => (
+                                    <option key={s} value={s}>{s}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="relative">
+                            <label className="sr-only">Unit</label>
+                            <select
+                                value={selectedUnit}
+                                onChange={(e) => setSelectedUnit(e.target.value)}
+                                className="bg-surface border border-white/5 rounded-2xl pl-4 pr-4 py-3 appearance-none text-sm font-medium cursor-pointer"
+                            >
+                                <option value="">All Units</option>
+                                {unitOptions.map((u) => (
+                                    <option key={u} value={u}>{u}</option>
+                                ))}
+                            </select>
+                        </div>
                     </div>
 
                     <div className="flex bg-surface border border-white/5 rounded-2xl p-1">
@@ -140,7 +212,7 @@ export const Browse = () => {
                             We couldn't find any notes matching your search or filters. Try checking different keywords.
                         </p>
                         <button
-                            onClick={() => { setSearchQuery(''); setSelectedCategory('All'); }}
+                            onClick={() => { setSearchQuery(''); setSelectedCourse(''); setSelectedBranch(''); setSelectedSemester(''); setSelectedSubject(''); setSelectedUnit(''); }}
                             className="btn-primary px-6"
                         >
                             Clear All Filters

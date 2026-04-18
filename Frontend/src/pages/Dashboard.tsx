@@ -70,8 +70,8 @@ export const Dashboard = () => {
                             Ready to dive back into your studies? Explore thousands of community-shared notes and boost your learning today.
                         </p>
                     </div>
-                    <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-primary/10 via-transparent to-transparent hidden lg:block" />
-                    <TrendingUp className="absolute bottom-[-20px] right-20 text-primary/5 size-48 lg:block hidden" />
+                    <div className="absolute top-0 right-0 w-1/3 h-full bg-linear-to-l from-primary/10 via-transparent to-transparent hidden lg:block" />
+                    <TrendingUp className="absolute -bottom-5 right-20 text-primary/5 size-48 lg:block hidden" />
                 </motion.div>
             </section>
 

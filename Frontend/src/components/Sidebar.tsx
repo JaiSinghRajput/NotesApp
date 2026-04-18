@@ -65,13 +65,13 @@ export const Sidebar = () => {
     const menuItems = [
         { icon: LayoutDashboard, label: 'Dashboard', to: '/' },
         { icon: Search, label: 'Browse Notes', to: '/browse' },
-        { icon: Layers, label: 'Categories', to: '/categories' },
+        { icon: Layers, label: 'Subjects', to: '/categories' },
     ];
 
     const adminItems = [
         { icon: Upload, label: 'Upload Note', to: '/admin/upload' },
         { icon: FileText, label: 'My Uploads', to: '/admin/my-uploads' },
-        { icon: Layers, label: 'Category Mgmt', to: '/admin/categories' },
+        { icon: Layers, label: 'Subject Mgmt', to: '/admin/categories' },
     ];
 
     const superAdminItems = [

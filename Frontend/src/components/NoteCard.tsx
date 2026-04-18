@@ -8,7 +8,11 @@ interface NoteCardProps {
         _id: string;
         title: string;
         description: string;
+        course?: string;
+        branch?: string;
+        semester?: string;
         category: string;
+        unit?: string;
         tags: string[];
         fileUrl: string;
         viewCount: number;
@@ -28,16 +32,21 @@ export const NoteCard = ({ note, onView, onDownload }: NoteCardProps) => {
             whileHover={{ y: -5 }}
             className="glass-card overflow-hidden group border border-white/5 hover:border-primary/30"
         >
-            <div className="h-40 bg-gradient-to-br from-primary/10 via-surface to-accent/5 p-6 flex items-center justify-center relative overflow-hidden">
+            <div className="h-40 bg-linear-to-br from-primary/10 via-surface to-accent/5 p-6 flex items-center justify-center relative overflow-hidden">
                 <FileText size={64} className="text-primary/20 group-hover:text-primary/40 transition-colors group-hover:scale-110 duration-500" />
-                <div className="absolute top-3 right-3 flex gap-2">
-                    <span className="px-2 py-1 rounded-md bg-primary/20 text-primary text-[10px] font-bold uppercase tracking-wider backdrop-blur-md">
-                        {note.category}
-                    </span>
-                </div>
+                    <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
+                        <span className="px-2 py-1 rounded-md bg-primary/20 text-primary text-[10px] font-bold uppercase tracking-wider backdrop-blur-md">
+                            {note.category}
+                        </span>
+                        {note.course && (
+                            <span className="px-2 py-1 rounded-md bg-white/10 text-white text-[10px] font-bold uppercase tracking-wider backdrop-blur-md">
+                                {note.course}
+                            </span>
+                        )}
+                    </div>
 
                 {/* Animated accent line */}
-                <div className="absolute bottom-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-linear-to-r from-transparent via-primary to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
 
             <div className="p-5 space-y-4">
@@ -45,9 +54,15 @@ export const NoteCard = ({ note, onView, onDownload }: NoteCardProps) => {
                     <h3 className="text-lg font-bold text-white mb-1 group-hover:text-primary transition-colors line-clamp-1">
                         {note.title}
                     </h3>
-                    <p className="text-sm text-text-secondary line-clamp-2 min-h-[40px]">
+                    <p className="text-sm text-text-secondary line-clamp-2 min-h-10">
                         {note.description || 'No description provided.'}
                     </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-[10px] text-text-secondary">
+                    {note.branch && <span className="px-2 py-1 rounded-full bg-white/5 border border-white/5">{note.branch}</span>}
+                    {note.semester && <span className="px-2 py-1 rounded-full bg-white/5 border border-white/5">Sem {note.semester}</span>}
+                    {note.unit && <span className="px-2 py-1 rounded-full bg-white/5 border border-white/5">{note.unit}</span>}
                 </div>
 
                 <div className="flex flex-wrap gap-2">
