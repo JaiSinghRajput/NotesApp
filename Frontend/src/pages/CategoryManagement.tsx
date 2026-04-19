@@ -65,7 +65,7 @@ export const CategoryManagement = () => {
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-                        <Layers className="text-primary" /> Category Management
+                        <Layers className="text-primary" /> Subject Management
                     </h1>
                     <p className="text-text-secondary">Define and organize the subjects available on the platform.</p>
                 </div>
@@ -87,13 +87,13 @@ export const CategoryManagement = () => {
                             className="glass-card p-6 border-primary/30 space-y-4"
                         >
                             <div className="space-y-2">
-                                <label className="text-sm font-bold text-white">{editingId ? 'Edit' : 'New'} Category Name</label>
+                                <label className="text-sm font-bold text-white">{editingId ? 'Edit' : 'New'} Subject Name</label>
                                 <input
                                     type="text"
                                     value={formData.name}
                                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                                     className="input-field"
-                                    placeholder="e.g. Quantum Physics"
+                                    placeholder="e.g. Data Structures"
                                 />
                             </div>
                             <div className="space-y-2">
@@ -101,7 +101,7 @@ export const CategoryManagement = () => {
                                 <textarea
                                     value={formData.description}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
-                                    className="input-field min-h-[100px]"
+                                    className="input-field min-h-25"
                                     placeholder="Brief overview of this subject..."
                                 />
                             </div>
@@ -117,7 +117,7 @@ export const CategoryManagement = () => {
                                     disabled={createMutation.isPending || updateMutation.isPending}
                                     className="flex-1 bg-primary text-white py-2 rounded-lg font-bold hover:bg-primary-dark transition-all disabled:opacity-50"
                                 >
-                                    {(createMutation.isPending || updateMutation.isPending) ? <Loader2 size={18} className="animate-spin mx-auto" /> : 'Save Category'}
+                                    {(createMutation.isPending || updateMutation.isPending) ? <Loader2 size={18} className="animate-spin mx-auto" /> : 'Save Subject'}
                                 </button>
                                 <button
                                     onClick={() => {

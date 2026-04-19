@@ -4,7 +4,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
-import { useQuery } from '@tanstack/react-query';
 import {
     Upload,
     X,
@@ -16,11 +15,16 @@ import {
 import apiClient from '../api/apiClient';
 import toast from 'react-hot-toast';
 import { cn } from '../utils/cn';
+import { academicCourses, getCourseBranches, semesterOptions } from '../constants/academicHierarchy';
 
 const uploadSchema = z.object({
     title: z.string().min(5, 'Title must be at least 5 characters'),
     description: z.string().min(10, 'Description must be at least 10 characters'),
-    category: z.string().min(1, 'Category is required'),
+    course: z.string().min(1, 'Course is required'),
+    branch: z.string().min(1, 'Branch is required'),
+    semester: z.string().min(1, 'Semester is required'),
+    category: z.string().min(1, 'Subject is required'),
+    unit: z.string().min(1, 'Unit is required'),
     tags: z.string().optional(),
 });
 
@@ -30,14 +34,7 @@ export const UploadNote = () => {
     const [file, setFile] = useState<File | null>(null);
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
-
-    const { data: categories, isLoading: catsLoading } = useQuery({
-        queryKey: ['categories'],
-        queryFn: async () => {
-            const res = await apiClient.get('/categories');
-            return res.data.data;
-        }
-    });
+    const [selectedCourse, setSelectedCourse] = useState('');
 
     const {
         register,
@@ -73,7 +70,11 @@ export const UploadNote = () => {
         const formData = new FormData();
         formData.append('title', data.title);
         formData.append('description', data.description);
+        formData.append('course', data.course);
+        formData.append('branch', data.branch);
+        formData.append('semester', data.semester);
         formData.append('category', data.category);
+        formData.append('unit', data.unit);
         if (data.tags) formData.append('tags', data.tags);
         formData.append('pdfFile', file);
 
@@ -89,6 +90,7 @@ export const UploadNote = () => {
             reset();
             setFile(null);
             setProgress(0);
+            setSelectedCourse('');
         } catch (error: any) {
             toast.error(error.response?.data?.message || 'Upload failed');
         } finally {
@@ -130,18 +132,65 @@ export const UploadNote = () => {
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-text-secondary">Category</label>
-                                    <select {...register('category')} className="input-field appearance-none">
-                                        <option value="">Select Category</option>
-                                        {catsLoading ? (
-                                            <option disabled>Loading...</option>
-                                        ) : (
-                                            categories?.map((cat: any) => (
-                                                <option key={cat._id} value={cat.name}>{cat.name}</option>
-                                            ))
-                                        )}
+                                    <label className="text-sm font-medium text-text-secondary">Course</label>
+                                    <select
+                                        {...register('course', {
+                                            onChange: (event) => setSelectedCourse(event.target.value),
+                                        })}
+                                        className="input-field appearance-none"
+                                    >
+                                        <option value="">Select Course</option>
+                                        {academicCourses.map((course) => (
+                                            <option key={course.value} value={course.value}>{course.label}</option>
+                                        ))}
                                     </select>
+                                    {errors.course && <p className="text-xs text-red-400">{errors.course.message}</p>}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-text-secondary">Branch</label>
+                                    <select {...register('branch')} className="input-field appearance-none" disabled={!selectedCourse}>
+                                        <option value="">Select Branch</option>
+                                        {getCourseBranches(selectedCourse).map((branch) => (
+                                            <option key={branch.value} value={branch.value}>{branch.label}</option>
+                                        ))}
+                                    </select>
+                                    {errors.branch && <p className="text-xs text-red-400">{errors.branch.message}</p>}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-text-secondary">Semester</label>
+                                    <select {...register('semester')} className="input-field appearance-none">
+                                        <option value="">Select Semester</option>
+                                        {semesterOptions.map((semester) => (
+                                            <option key={semester} value={semester}>Semester {semester}</option>
+                                        ))}
+                                    </select>
+                                    {errors.semester && <p className="text-xs text-red-400">{errors.semester.message}</p>}
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-text-secondary">Subject</label>
+                                    <input
+                                        {...register('category')}
+                                        className="input-field"
+                                        placeholder="e.g. Data Structures"
+                                    />
                                     {errors.category && <p className="text-xs text-red-400">{errors.category.message}</p>}
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-text-secondary">Unit</label>
+                                    <input
+                                        {...register('unit')}
+                                        className="input-field"
+                                        placeholder="e.g. Unit 1 - Basics"
+                                    />
+                                    {errors.unit && <p className="text-xs text-red-400">{errors.unit.message}</p>}
                                 </div>
 
                                 <div className="space-y-2">
@@ -234,19 +283,19 @@ export const UploadNote = () => {
                         </div>
                         <ul className="space-y-3 text-sm text-text-secondary">
                             <li className="flex gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
                                 Ensure the PDF is clear and readable.
                             </li>
                             <li className="flex gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
                                 Provide a descriptive title for better searching.
                             </li>
                             <li className="flex gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
-                                Select the most relevant category.
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
+                                Choose the correct course, branch, semester, subject, and unit.
                             </li>
                             <li className="flex gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 shrink-0" />
                                 Do not upload copyrighted or prohibited material.
                             </li>
                         </ul>

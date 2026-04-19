@@ -49,7 +49,7 @@ export const MyUploads = () => {
                     <thead className="bg-white/5 border-b border-white/5">
                         <tr>
                             <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-text-secondary">Note</th>
-                            <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-text-secondary">Category</th>
+                            <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-text-secondary">Academic Path</th>
                             <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-text-secondary">Stats</th>
                             <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-text-secondary">Date</th>
                             <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-text-secondary text-right">Actions</th>
@@ -71,9 +71,12 @@ export const MyUploads = () => {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
-                                        <span className="px-2 py-1 rounded-md bg-white/5 text-xs text-text-secondary uppercase">
-                                            {note.category}
-                                        </span>
+                                        <div className="space-y-1 text-xs text-text-secondary">
+                                            <p className="px-2 py-1 rounded-md bg-white/5 text-[11px] uppercase w-fit">{note.course}</p>
+                                            <p>{note.branch} · Sem {note.semester}</p>
+                                            <p className="text-white font-semibold">{note.category}</p>
+                                            <p>{note.unit}</p>
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-4 text-xs text-text-secondary">

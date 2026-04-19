@@ -95,8 +95,8 @@ export const Categories = () => {
     return (
         <div className="space-y-12 pb-20">
             <div className="flex flex-col gap-2">
-                <h1 className="text-3xl font-bold text-white">Explore Categories</h1>
-                <p className="text-text-secondary">Browse through various topics and find exactly what you need.</p>
+                <h1 className="text-3xl font-bold text-white">Explore Subjects</h1>
+                <p className="text-text-secondary">Browse through academic subjects and jump straight into the matching notes.</p>
             </div>
 
             <motion.div
@@ -115,11 +115,11 @@ export const Categories = () => {
                             variants={item}
                             whileHover={{ y: -8, scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
-                            onClick={() => navigate(`/browse?category=${cat.slug}`)}
+                            onClick={() => navigate(`/browse?subject=${encodeURIComponent(cat.name)}`)}
                             className="group relative flex flex-col items-start p-8 rounded-3xl overflow-hidden glass border border-white/5 hover:border-primary/30 transition-all text-left"
                         >
                             {/* Gradient Background */}
-                            <div className={cn("absolute inset-0 bg-gradient-to-br opacity-50 group-hover:opacity-100 transition-opacity", colors.split(' ').slice(0, 2).join(' '))} />
+                            <div className={cn("absolute inset-0 bg-linear-to-br opacity-50 group-hover:opacity-100 transition-opacity", colors.split(' ').slice(0, 2).join(' '))} />
 
                             {/* Icon Wrapper */}
                             <div className={cn("relative z-10 p-4 rounded-2xl bg-white/5 mb-6 group-hover:scale-110 group-hover:bg-white/10 transition-all duration-300", colors.split(' ').pop())}>

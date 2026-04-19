@@ -89,10 +89,14 @@ export const NoteViewer = () => {
                         <ChevronLeft size={16} /> Back to Browse
                     </button>
                     <h1 className="text-3xl font-bold text-white">{note.title}</h1>
-                    <div className="flex flex-wrap gap-4 text-sm text-text-secondary">
+                    <div className="flex flex-wrap gap-3 text-sm text-text-secondary">
                         <span className="flex items-center gap-1.5"><User size={16} className="text-primary" /> {note.uploadedBy?.name}</span>
                         <span className="flex items-center gap-1.5"><Calendar size={16} className="text-accent" /> {new Date(note.createdAt).toLocaleDateString()}</span>
                         <span className="flex items-center gap-1.5"><TagIcon size={16} className="text-blue-400" /> {note.category}</span>
+                        {note.course && <span className="px-2 py-1 rounded-full bg-white/5 border border-white/5">{note.course}</span>}
+                        {note.branch && <span className="px-2 py-1 rounded-full bg-white/5 border border-white/5">{note.branch}</span>}
+                        {note.semester && <span className="px-2 py-1 rounded-full bg-white/5 border border-white/5">Sem {note.semester}</span>}
+                        {note.unit && <span className="px-2 py-1 rounded-full bg-white/5 border border-white/5">{note.unit}</span>}
                     </div>
                 </div>
 
@@ -108,7 +112,7 @@ export const NoteViewer = () => {
                     </button>
                     <button
                         onClick={() => downloadMutation.mutate()}
-                        className="btn-primary flex items-center gap-2 px-6 h-[48px]"
+                        className="btn-primary flex items-center gap-2 px-6 h-12"
                     >
                         <Download size={20} /> Download PDF
                     </button>
@@ -118,7 +122,7 @@ export const NoteViewer = () => {
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 {/* PDF Viewer */}
                 <div className="lg:col-span-3 space-y-6">
-                    <div className="glass-card overflow-hidden bg-surface-brighter min-h-[600px] flex flex-col relative">
+                    <div className="glass-card overflow-hidden bg-surface-brighter min-h-150 flex flex-col relative">
                         <div className="p-4 border-b border-white/5 flex items-center justify-between bg-surface/50 backdrop-blur-md sticky top-0 z-10">
                             <div className="flex items-center gap-4">
                                 <div className="flex items-center bg-white/5 rounded-lg overflow-hidden border border-white/10">
@@ -210,7 +214,7 @@ export const NoteViewer = () => {
                             <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">{comments?.length || 0}</span>
                         </div>
 
-                        <div className="space-y-6 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="space-y-6 max-h-100 overflow-y-auto pr-2 custom-scrollbar">
                             {comments?.map((comment: any) => (
                                 <div key={comment._id} className="space-y-1">
                                     <div className="flex items-center gap-2">
