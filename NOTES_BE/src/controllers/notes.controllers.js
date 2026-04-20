@@ -15,7 +15,7 @@ import {
 
 // ================== UPLOAD NOTE ==================
 const handleUpload = asyncHandler(async (req, res) => {
-  const { title, description, category, tags } = req.body;
+  const { title, description, course, branch, semester, category, unit, tags } = req.body;
   const { file } = req;
   const enableAiDuplicateCheck =
     (process.env.ENABLE_AI_DUPLICATE_CHECK || "true").toLowerCase() === "true";
@@ -25,8 +25,8 @@ const handleUpload = asyncHandler(async (req, res) => {
     throw new ApiError(403, "Only admins can upload notes");
   }
 
-  if (!title || !description || !category) {
-    throw new ApiError(400, "Title, description, and category are required");
+  if (!title || !description || !course || !branch || !semester || !category || !unit) {
+    throw new ApiError(400, "Title, description, course, branch, semester, subject, and unit are required");
   }
 
   if (!file) {
@@ -108,7 +108,11 @@ const handleUpload = asyncHandler(async (req, res) => {
     const note = await Note.create({
       title,
       description,
+      course,
+      branch,
+      semester,
       category,
+      unit,
       tags: extractedTags,
       filePublicId: uploadRes.public_id,
       fileUrl,
@@ -182,7 +186,11 @@ const searchNotes = asyncHandler(async (req, res) => {
   const conditions = [
     { title: { $regex: query, $options: "i" } },
     { description: { $regex: query, $options: "i" } },
+    { course: { $regex: query, $options: "i" } },
+    { branch: { $regex: query, $options: "i" } },
+    { semester: { $regex: query, $options: "i" } },
     { category: { $regex: `^${query}$`, $options: "i" } },
+    { unit: { $regex: query, $options: "i" } },
     { tags: { $in: [new RegExp(query, "i")] } },
   ];
 
@@ -208,4 +216,16 @@ const getNoteById = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, note, "Note retrieved successfully"));
 });
 
-export { handleUpload, handleDelete, searchNotes, getNoteById };
+const buildAcademicFilter = (query) => {
+  const filter = {};
+
+  if (query.course) filter.course = query.course;
+  if (query.branch) filter.branch = query.branch;
+  if (query.semester) filter.semester = query.semester;
+  if (query.subject || query.category) filter.category = query.subject || query.category;
+  if (query.unit) filter.unit = query.unit;
+
+  return filter;
+};
+
+export { handleUpload, handleDelete, searchNotes, getNoteById, buildAcademicFilter };

@@ -1,5 +1,6 @@
 import { Note, User } from "../models/index.js";
 import { ApiResponse, ApiError, asyncHandler } from "../utils/index.js";
+import { buildAcademicFilter } from "./notes.controllers.js";
 
 const getAllNotes = asyncHandler(async (req, res, next) => {
   try {
@@ -7,12 +8,22 @@ const getAllNotes = asyncHandler(async (req, res, next) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    const { category } = req.query;
+    const { query } = req.query;
 
     // Build filter dynamically
-    const filter = {};
-    if (category) {
-      filter.category = category;
+    const filter = buildAcademicFilter(req.query);
+
+    if (query) {
+      filter.$or = [
+        { title: { $regex: query, $options: "i" } },
+        { description: { $regex: query, $options: "i" } },
+        { course: { $regex: query, $options: "i" } },
+        { branch: { $regex: query, $options: "i" } },
+        { semester: { $regex: query, $options: "i" } },
+        { category: { $regex: query, $options: "i" } },
+        { unit: { $regex: query, $options: "i" } },
+        { tags: { $in: [new RegExp(query, "i")] } },
+      ];
     }
 
     // Fetch paginated + filtered notes

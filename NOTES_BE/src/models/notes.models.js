@@ -39,9 +39,29 @@ const NoteSchema = new mongoose.Schema({
         ref: "User",
         required: true
     },
+    course: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    branch: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    semester: {
+        type: String,
+        required: true,
+        trim: true
+    },
     category: {
         type: String,
         required: true
+    },
+    unit: {
+        type: String,
+        required: true,
+        trim: true
     },
     tags: [{ type: String }],
     downloadCount: {
@@ -55,7 +75,7 @@ const NoteSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Full-text search index
-NoteSchema.index({ title: "text", description: "text", category: "text" });
+NoteSchema.index({ title: "text", description: "text", course: "text", branch: "text", semester: "text", category: "text", unit: "text" });
 NoteSchema.index({ pdfSha256: 1 }, { unique: true, sparse: true });
 NoteSchema.index({ pdfSimhash: 1 });
 
