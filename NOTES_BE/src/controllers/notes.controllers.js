@@ -12,6 +12,7 @@ import {
   hammingDistanceHex64,
   jaccardSimilarity,
 } from "../utils/duplicateDetector.js";
+import { buildSearchConditions } from "../services/noteSearch.service.js";
 
 // ================== UPLOAD NOTE ==================
 const handleUpload = asyncHandler(async (req, res) => {
@@ -182,17 +183,7 @@ const searchNotes = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Search query is required");
   }
 
-  // Dynamic search conditions
-  const conditions = [
-    { title: { $regex: query, $options: "i" } },
-    { description: { $regex: query, $options: "i" } },
-    { course: { $regex: query, $options: "i" } },
-    { branch: { $regex: query, $options: "i" } },
-    { semester: { $regex: query, $options: "i" } },
-    { category: { $regex: `^${query}$`, $options: "i" } },
-    { unit: { $regex: query, $options: "i" } },
-    { tags: { $in: [new RegExp(query, "i")] } },
-  ];
+  const conditions = buildSearchConditions(query);
 
   const notes = await Note.find({ $or: conditions }).populate(
     "uploadedBy",
