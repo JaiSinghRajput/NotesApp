@@ -3,17 +3,25 @@ import { Note } from "../models/index.js";
 const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const buildSearchConditions = (query) => {
-  const safeQuery = escapeRegex(query.trim());
+  const raw = String(query || "").trim();
+  if (!raw) return [];
+
+  const tokens = raw.split(/\s+/).map((t) => escapeRegex(t)).filter(Boolean);
+
+  // Build a regex that requires all tokens to appear (in any order) for better fuzzy matching
+  const allTokensRegex = tokens.length > 1 ? tokens.map((t) => `(?=.*${t})`).join("") + ".*" : tokens[0];
+  const regexAll = new RegExp(allTokensRegex, "i");
+  const regexAny = new RegExp(tokens.join("|"), "i");
 
   return [
-    { title: { $regex: safeQuery, $options: "i" } },
-    { description: { $regex: safeQuery, $options: "i" } },
-    { course: { $regex: safeQuery, $options: "i" } },
-    { branch: { $regex: safeQuery, $options: "i" } },
-    { semester: { $regex: safeQuery, $options: "i" } },
-    { category: { $regex: `^${safeQuery}$`, $options: "i" } },
-    { unit: { $regex: safeQuery, $options: "i" } },
-    { tags: { $in: [new RegExp(safeQuery, "i")] } },
+    { title: { $regex: regexAll } },
+    { description: { $regex: regexAll } },
+    { course: { $regex: regexAny } },
+    { branch: { $regex: regexAny } },
+    { semester: { $regex: regexAny } },
+    { category: { $regex: regexAny } },
+    { unit: { $regex: regexAny } },
+    { tags: { $in: tokens.map((t) => new RegExp(t, "i")) } },
   ];
 };
 
