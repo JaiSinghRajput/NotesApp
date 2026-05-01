@@ -1,140 +1,246 @@
-import fs from "fs";
-import path from "path";
-import telegramPkg from "telegram";
-import eventsPkg from "telegram/events/index.js";
-import sessionsPkg from "telegram/sessions/index.js";
+import TelegramBot from "node-telegram-bot-api";
 import { searchNotesByQuery, formatTelegramSearchResults } from "./noteSearch.service.js";
+import {
+  addTelegramAdminId,
+  ensureTelegramBotConfig,
+  getTelegramBotConfig,
+  removeTelegramAdminId,
+  setTelegramAdminIds,
+  updateTelegramBotConfig,
+} from "./botConfig.service.js";
 
-const { TelegramClient, Api, utils } = telegramPkg;
-const { NewMessage } = eventsPkg;
-const { StringSession } = sessionsPkg;
+let telegramBot;
+let telegramBotUsername = "";
 
-let telegramClient;
-let telegramHandlerAttached = false;
+const START_MENU_DATA = {
+  ABOUT: "start:about",
+  DONATE: "start:donate",
+  COMMANDS: "start:commands",
+  SUPPORT: "start:support",
+  UPDATES: "start:updates",
+  ADD_GROUP: "start:add_group",
+  VERIFY: "start:verify",
+};
 
-const getTelegramConfig = () => {
-  const apiId = Number(process.env.TELEGRAM_API_ID);
-  const apiHash = process.env.TELEGRAM_API_HASH?.trim();
-  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  const logChatId = process.env.TELEGRAM_LOG_CHAT_ID?.trim();
-  const sessionString = process.env.TELEGRAM_SESSION?.trim() || "";
-  const botEnabled = (process.env.TELEGRAM_BOT_ENABLED || "true").toLowerCase() === "true";
+const DEFAULT_ADD_GROUP_PERMS = [
+  "change_info",
+  "post_messages",
+  "edit_messages",
+  "delete_messages",
+  "invite_users",
+  "restrict_members",
+  "pin_messages",
+  "promote_members",
+  "manage_video_chats",
+  "manage_topics",
+];
+
+const buildAddToGroupUrl = (botUsername, perms = DEFAULT_ADD_GROUP_PERMS) => {
+  const base = botUsername ? `https://t.me/${botUsername}` : "https://t.me";
+  const adminParam = perms && perms.length ? `admin=${perms.join("+")}` : "";
+  return `${base}?startgroup&${adminParam}`;
+};
+
+const normalizeText = (value) => String(value || "").trim();
+
+const getTelegramConfig = async () => {
+  const config = await getTelegramBotConfig();
+  const botToken = normalizeText(process.env.TELEGRAM_BOT_TOKEN);
 
   return {
-    apiId: Number.isFinite(apiId) ? apiId : undefined,
-    apiHash,
     botToken,
-    logChatId,
-    sessionString,
-    enabled: Boolean(botEnabled && botToken && apiId && apiHash),
+    logChatId: normalizeText(config.logChatId),
+    supportChatId: normalizeText(config.supportChatId),
+    updatesChatId: normalizeText(config.updatesChatId),
+    startImage: normalizeText(config.startImage),
+    enabled: Boolean(config.enabled && botToken),
+    adminIds: Array.isArray(config.adminIds) ? config.adminIds : [],
   };
 };
 
-const isNumericEntity = (value) => typeof value === "string" && /^-?\d+$/.test(value);
-
-const resolveTelegramEntity = (value) => {
-  if (value == null) {
-    return undefined;
-  }
-
-  if (typeof value === "bigint" || typeof value === "number") {
-    return value;
-  }
-
-  if (isNumericEntity(value)) {
-    return BigInt(value);
-  }
-
-  return value;
-};
-
-const formatName = (entity) => utils.getDisplayName(entity) || entity?.username || String(entity?.id || "unknown");
-
-const formatJoinMessage = async (message) => {
-  const chat = await message.getChat().catch(() => undefined);
-  const chatName = formatName(chat) || "a chat";
-
-  if (message.action instanceof Api.MessageActionChatAddUser) {
-    const addedUsers = Array.isArray(message.actionEntities) ? message.actionEntities : [];
-    const names = addedUsers.length ? addedUsers.map(formatName).join(", ") : "unknown user";
-    return `New member joined ${chatName}: ${names}`;
-  }
-
-  const sender = await message.getSender().catch(() => undefined);
-  const senderName = formatName(sender);
-  return `New member joined ${chatName}: ${senderName}`;
-};
-
-const extractSearchQuery = (text) => {
-  const match = text.match(/^\/search(?:@\w+)?(?:\s+([\s\S]+))?$/i);
-  return match?.[1]?.trim() || "";
-};
-
-const buildGridButtons = (buttons = [], columns = 2) => {
-  // buttons: [{ text, url?, data? }]
+const buildInlineKeyboard = (buttons = [], columns = 2) => {
   const rows = [];
-  for (let i = 0; i < buttons.length; i += columns) {
-    const slice = buttons.slice(i, i + columns).map((b) => {
-      const btn = { text: b.text };
-      if (b.url) btn.url = b.url;
-      if (b.data) btn.data = b.data;
-      return btn;
+  for (let index = 0; index < buttons.length; index += columns) {
+    const row = buttons.slice(index, index + columns).map((button) => {
+      if (button.url) {
+        return { text: button.text, url: button.url };
+      }
+
+      return { text: button.text, callback_data: button.data || button.text };
     });
-    rows.push(slice);
+
+    rows.push(row);
   }
   return rows;
 };
 
-const sendTelegramMessage = async (entity, text, options = {}) => {
-  if (!telegramClient) {
-    throw new Error("Telegram client is not started");
+const buildReplyMarkup = (buttons, columns = 2) => {
+  // Accept either a 2D array (rows) or a flat array
+  if (!buttons) return undefined;
+  if (Array.isArray(buttons) && Array.isArray(buttons[0])) {
+    const rows = buttons.map((row) =>
+      (Array.isArray(row) ? row : [row]).map((button) => {
+        if (button.url) return { text: button.text || "Open", url: button.url };
+        const cb = button.callback_data || button.data || button.callback || button.action;
+        return { text: button.text || String(cb || ""), callback_data: String(cb || button.text) };
+      })
+    );
+    return { inline_keyboard: rows };
   }
 
-  const payload = {
-    message: text,
-    linkPreview: false,
+  return { inline_keyboard: buildInlineKeyboard(buttons, columns) };
+};
+
+const buildStartMenuKeyboard = (botUsername, links = {}) => {
+  // links: { supportLink, updatesLink }
+  return [
+    [{ text: "About Me", data: START_MENU_DATA.ABOUT }],
+    [
+      { text: "Donate", data: START_MENU_DATA.DONATE },
+      { text: "Commands", data: START_MENU_DATA.COMMANDS },
+    ],
+    [
+      links.supportLink ? { text: "Support", url: links.supportLink } : { text: "Support", data: START_MENU_DATA.SUPPORT },
+      links.updatesLink ? { text: "Updates", url: links.updatesLink } : { text: "Updates", data: START_MENU_DATA.UPDATES },
+    ],
+    [
+      { text: "Add Notes bot to your groups", url: botUsername ? buildAddToGroupUrl(botUsername) : "https://t.me" },
+    ],
+  ];
+};
+
+const buildJoinPromptKeyboard = (inviteLink) => {
+  // Use pre-generated invite link as URL button
+  return [
+    [{ text: "Join Support Chat", url: inviteLink || "https://t.me" }],
+    [{ text: "Verify Membership", data: START_MENU_DATA.VERIFY }],
+  ];
+};
+
+const getJoinPromptCaption = () => [
+  "Welcome! 👋",
+  "",
+  "To access Notes Bot features, please join our support community first.",
+  "This helps us maintain quality and support.",
+].join("\n");
+
+const getStartMenuCaption = () => [
+  "Hello There, My name's Notes Bot ✨",
+  "I am a study notes assistant for students.",
+  "Search, share, and manage notes from one place.",
+].join("\n");
+
+const getAboutText = () => [
+  "About Notes Bot:",
+  "",
+  "• Search notes by subject, semester, branch, or keyword.",
+  "• Share study notes in private chats or groups.",
+  "• Admins can manage the bot from chat.",
+].join("\n");
+
+const getCommandsText = () => [
+  "Commands:",
+  "",
+  "/start - show menu",
+  "/search <query> - search notes",
+  "/whoami - show your Telegram id",
+].join("\n");
+
+const getDonateText = () => "Donate: configure your donation link or payment method here later.";
+const getSupportText = () => "Support: connect this button to your support chat or helpdesk link.";
+const getUpdatesText = () => "Updates: connect this button to your updates channel or announcement page.";
+
+const getDisplayName = (user) => {
+  if (!user) return "Unknown";
+  const nameParts = [user.first_name, user.last_name].filter(Boolean);
+  if (nameParts.length) return nameParts.join(" ");
+  if (user.username) return `@${user.username}`;
+  return String(user.id || "Unknown");
+};
+
+const formatJoinMessage = (message) => {
+  const chatName = message.chat?.title || message.chat?.username || "a chat";
+  const members = Array.isArray(message.new_chat_members) ? message.new_chat_members : [];
+  const names = members.length ? members.map(getDisplayName).join(", ") : getDisplayName(message.from);
+
+  return `New member joined ${chatName}: ${names}`;
+};
+
+const isAdminUser = async (userId) => {
+  const config = await getTelegramConfig();
+  return config.adminIds.includes(String(userId));
+};
+
+const resolveTelegramChatId = async (target) => {
+  const value = normalizeText(target);
+  if (!value) return null;
+
+  if (/^-?\d+$/.test(value)) {
+    return value;
+  }
+
+  const handle = value.startsWith("@") ? value : value.replace(/^https?:\/\/t\.me\//i, "");
+  const chat = await telegramBot.getChat(handle.startsWith("@") ? handle : `@${handle}`).catch(() => undefined);
+  return chat?.id != null ? String(chat.id) : null;
+};
+
+const sendTelegramMessage = async (chatId, text, options = {}) => {
+  if (!telegramBot) {
+    throw new Error("Telegram bot is not started");
+  }
+
+  let replyMarkup;
+  if (Array.isArray(options.buttons)) {
+    if (Array.isArray(options.buttons[0])) {
+      replyMarkup = {
+        inline_keyboard: options.buttons.map((row) =>
+          (Array.isArray(row) ? row : [row]).map((button) => {
+            if (!button) return button;
+            if (typeof button === "string") {
+              return { text: button, callback_data: button };
+            }
+            if (button.url) return { text: button.text || "Open", url: button.url };
+            const cb = button.callback_data || button.data || button.callback || button.action;
+            if (cb) return { text: button.text || String(cb), callback_data: String(cb) };
+            if (button.text) return { text: button.text, callback_data: button.text };
+            return button;
+          })
+        ),
+      };
+    } else {
+      replyMarkup = { inline_keyboard: buildInlineKeyboard(options.buttons, options.columns || 2) };
+    }
+  } else {
+    replyMarkup = undefined;
+  }
+
+  const common = {
+    disable_web_page_preview: true,
+    reply_markup: replyMarkup,
   };
 
-  if (options.parseMode === "md" || options.parseMode === "markdown") {
-    payload.parseMode = "md";
-  }
-
-  if (Array.isArray(options.buttons)) {
-    payload.buttons = buildGridButtons(options.buttons, options.columns || 2);
+  if (options.parseMode) {
+    common.parse_mode = options.parseMode === "md" ? "Markdown" : options.parseMode;
   }
 
   if (options.media) {
-    // Sending media with reply markup can cause REPLY_MARKUP_INVALID for some
-    // entity types. To avoid that, send the media first (with caption), then
-    // send a follow-up message that contains the buttons.
-    await telegramClient.sendMessage(resolveTelegramEntity(entity), {
-      file: options.media,
-      caption: text,
-      parseMode: payload.parseMode,
-      linkPreview: false,
-    });
-
-    if (payload.buttons) {
-      // send an additional lightweight message that only carries the buttons
-      return telegramClient.sendMessage(resolveTelegramEntity(entity), {
-        message: "\u200b",
-        buttons: payload.buttons,
-        linkPreview: false,
+    try {
+      return await telegramBot.sendPhoto(chatId, options.media, {
+        caption: text,
+        ...common,
       });
+    } catch (error) {
+      console.error("Telegram sendPhoto error:", error.message);
+      return telegramBot.sendMessage(chatId, text, common);
     }
-
-    return;
   }
 
-  return telegramClient.sendMessage(resolveTelegramEntity(entity), payload);
+  return telegramBot.sendMessage(chatId, text, common);
 };
 
 const notifyLogChannel = async (text) => {
-  const { logChatId } = getTelegramConfig();
-
-  if (!logChatId) {
-    return;
-  }
+  const { logChatId } = await getTelegramConfig();
+  if (!logChatId) return;
 
   try {
     await sendTelegramMessage(logChatId, text);
@@ -143,139 +249,394 @@ const notifyLogChannel = async (text) => {
   }
 };
 
-const handleTelegramMessage = async (event) => {
-  const message = event.message;
-  const rawText = message.rawText?.trim() || "";
+const handleStartMenuAction = async (query, action) => {
+  const textMap = {
+    [START_MENU_DATA.ABOUT]: getAboutText(),
+    [START_MENU_DATA.DONATE]: getDonateText(),
+    [START_MENU_DATA.COMMANDS]: getCommandsText(),
+    [START_MENU_DATA.SUPPORT]: getSupportText(),
+    [START_MENU_DATA.UPDATES]: getUpdatesText(),
+  };
 
-  if (
-    message.action instanceof Api.MessageActionChatAddUser ||
-    message.action instanceof Api.MessageActionChatJoinedByLink ||
-    message.action instanceof Api.MessageActionChatJoinedByRequest
-  ) {
-    await notifyLogChannel(await formatJoinMessage(message));
-  }
+  if (action === START_MENU_DATA.VERIFY) {
+    const isMember = await isUserInSupportGroup(query.from?.id);
+    const isAdmin = await isAdminUser(query.from?.id);
+    if (!isMember && !isAdmin) {
+      await telegramBot.answerCallbackQuery(query.id, {
+        text: "You are not yet a member of the support chat. Please join first!",
+        show_alert: true,
+      }).catch(() => undefined);
+      return;
+    }
 
-  if (!rawText) {
+    // Member verified - edit message to show start menu
+    const config = await getTelegramConfig();
+    const messageId = query.message?.message_id;
+    const chatId = query.message?.chat?.id;
+
+    try {
+      // Delete the join prompt message and send a fresh start menu
+      await telegramBot.deleteMessage(chatId, messageId).catch(() => undefined);
+    } catch (e) {
+      console.error("Error deleting message:", e.message);
+    }
+
+    const media = config.startImage || "https://placehold.co/800x300?text=Notes+Bot";
+    const supportLink = config.supportChatId ? await generateSupportChatInviteLink(config.supportChatId) : null;
+    const updatesLink = config.updatesChatId && String(config.updatesChatId).startsWith("@") ? `https://t.me/${String(config.updatesChatId).replace(/^@/,"")}` : null;
+
+    await sendTelegramMessage(chatId, getStartMenuCaption(), {
+      media,
+      buttons: buildStartMenuKeyboard(telegramBotUsername, { supportLink, updatesLink }),
+      columns: 2,
+    });
+
+    await telegramBot.answerCallbackQuery(query.id).catch(() => undefined);
     return;
   }
 
-  const chatId = message.chatId || event.chatId;
-  if (!chatId) {
+  if (action === "start:ask_join_link") {
+    // Edit the message inline to show instruction and a Back button
+    const chatId = query.message?.chat?.id;
+    const messageId = query.message?.message_id;
+    const content = "Please contact the admin to get the support group join link.";
+    try {
+      await telegramBot.editMessageText(content, {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: buildReplyMarkup([{ text: "Back", data: "start:menu" }], 1),
+      });
+    } catch (e) {
+      console.error("Error editing message for ask_join_link:", e.message);
+    }
+    await telegramBot.answerCallbackQuery(query.id).catch(() => undefined);
     return;
   }
 
-  if (/^\/(start|help)(?:@\w+)?$/i.test(rawText)) {
-    const body = [
-      "*Welcome to Notes — your study companion!*",
-      "",
-      "Find and share study notes quickly. Use the buttons below to get started, or run /search <query>.",
-      "",
-      "_Tip:_ try `cse 4th sem data structures` or `/search calculus`",
-      "",
-      "Admin: send /adminhelp (visible to bot admins)",
-    ].join("\n");
-
-    const buttons = [
-      { text: "🔎 Search", data: "SEARCH_ACTION" },
-      { text: "📂 Browse", url: "https://your-app.example.com/browse" },
-      { text: "⬆️ Upload", url: "https://your-app.example.com/upload" },
-      { text: "👤 Profile", url: "https://your-app.example.com/profile" },
-    ];
-
-    // placeholder media; replace with a real URL/file id if you have one
-    const media = process.env.NOTES_BOT_START_IMAGE || "https://placehold.co/800x300?text=Notes+Bot";
-
-    await sendTelegramMessage(chatId, body, { parseMode: "md", buttons, columns: 2, media });
+  if (action === "start:generate_join_link") {
+    const chatId = query.message?.chat?.id;
+    const messageId = query.message?.message_id;
+    const content = "Invite link generation is not supported via this button.";
+    try {
+      await telegramBot.editMessageText(content, {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: buildReplyMarkup([{ text: "Back", data: "start:menu" }], 1),
+      });
+    } catch (e) {
+      console.error("Error editing message for generate_join_link:", e.message);
+    }
+    await telegramBot.answerCallbackQuery(query.id).catch(() => undefined);
     return;
   }
 
-  // Informational helper: return user's Telegram id so they can add themselves as admin
+  if (action === "start:menu") {
+    // Render the main start menu inline
+    const chatId = query.message?.chat?.id;
+    const messageId = query.message?.message_id;
+    try {
+      const cfg = await getTelegramConfig();
+      const supportLink = cfg.supportChatId ? await generateSupportChatInviteLink(cfg.supportChatId) : null;
+      const updatesLink = cfg.updatesChatId && String(cfg.updatesChatId).startsWith("@") ? `https://t.me/${String(cfg.updatesChatId).replace(/^@/,"")}` : null;
+
+      await telegramBot.editMessageText(getStartMenuCaption(), {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: buildReplyMarkup(buildStartMenuKeyboard(telegramBotUsername, { supportLink, updatesLink }), 2),
+      });
+    } catch (e) {
+      console.error("Error editing message for start menu:", e.message);
+    }
+    await telegramBot.answerCallbackQuery(query.id).catch(() => undefined);
+    return;
+  }
+
+  // Default: show the mapped text inline with Back button
+  const chatId = query.message?.chat?.id;
+  const messageId = query.message?.message_id;
+  const content = textMap[action] || "";
+  try {
+    await telegramBot.editMessageText(content, {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: buildReplyMarkup([{ text: "Back", data: "start:menu" }], 1),
+    });
+  } catch (e) {
+    console.error("Error editing message for start action:", e.message);
+  }
+  await telegramBot.answerCallbackQuery(query.id).catch(() => undefined);
+};
+
+const isUserInSupportGroup = async (userId) => {
+  try {
+    const cfg = await getTelegramConfig();
+    if (!cfg.supportChatId) return true; // no support group configured => open access
+    if (!telegramBot) return false;
+
+    const member = await telegramBot.getChatMember(cfg.supportChatId, String(userId)).catch(() => undefined);
+    if (!member || !member.status) return false;
+    return ["member", "creator", "administrator"].includes(String(member.status));
+  } catch (err) {
+    console.error("isUserInSupportGroup error:", err?.message || err);
+    return false;
+  }
+};
+
+const generateSupportChatInviteLink = async (supportChatId) => {
+  if (!supportChatId || !telegramBot) return null;
+  
+  try {
+    // Try to create a new invite link
+    const link = await telegramBot.createChatInviteLink(supportChatId, {
+      creates_join_request: false,
+    }).catch(() => undefined);
+    if (link?.invite_link) return link.invite_link;
+    
+    // Fallback: export existing invite link
+    const existingLink = await telegramBot.exportChatInviteLink(supportChatId).catch(() => undefined);
+    if (existingLink) return existingLink;
+    
+    return null;
+  } catch (err) {
+    console.error("generateSupportChatInviteLink error:", err?.message || err);
+    return null;
+  }
+};
+
+const handleTelegramCallbackQuery = async (query) => {
+  const action = normalizeText(query.data);
+  console.log(`[callback] action=${action}, userId=${query.from?.id}`);
+  // Handle all start-menu related callbacks
+  if (String(action).startsWith("start:")) {
+    console.log(`[callback] handling start action: ${action}`);
+    await handleStartMenuAction(query, action);
+  }
+};
+
+const handleTelegramMessage = async (message) => {
+  try {
+    const rawText = normalizeText(message.text);
+
+  if (Array.isArray(message.new_chat_members) && message.new_chat_members.length) {
+    await notifyLogChannel(formatJoinMessage(message));
+  }
+
+  if (!rawText) return;
+
+  const chatId = message.chat?.id;
+  if (chatId == null) return;
+
+  // Access control: if support group is configured, allow only users who are members
+  // Admin users bypass the support membership requirement entirely.
+  const isPublicCmd = /^\/(start|help|whoami)\b/i.test(rawText);
+  if (!isPublicCmd) {
+    const isAdmin = await isAdminUser(message.from?.id);
+    if (!isAdmin) {
+      const allowed = await isUserInSupportGroup(message.from?.id);
+      if (!allowed) {
+        const cfg = await getTelegramConfig();
+        const supportLink = cfg.supportChatId && cfg.supportChatId.startsWith("@") ? `https://t.me/${cfg.supportChatId.replace(/^@/,"")}` : (cfg.supportChatId || "https://t.me");
+        await sendTelegramMessage(chatId, `Access restricted. Please join our support group to use this command: ${supportLink}`);
+        return;
+      }
+    }
+  }
+
+    if (/^\/(start|help)(?:@\w+)?$/i.test(rawText)) {
+    const config = await getTelegramConfig();
+    const userId = message.from?.id;
+    console.log(`[/start] userId=${userId}, supportChatId=${config.supportChatId}`);
+    
+    const isMember = await isUserInSupportGroup(userId);
+    const isAdmin = await isAdminUser(userId);
+    console.log(`[/start] isMember=${isMember}, isAdmin=${isAdmin}`);
+
+    if (!isMember && config.supportChatId && !isAdmin) {
+      console.log(`[/start] Showing join prompt`);
+      // User is not a member of support chat - generate invite link
+      const inviteLink = await generateSupportChatInviteLink(config.supportChatId);
+      console.log(`[/start] Generated invite link: ${inviteLink ? "success" : "failed"}`);
+      
+      const joinMessage = await sendTelegramMessage(chatId, getJoinPromptCaption(), {
+        buttons: buildJoinPromptKeyboard(inviteLink),
+        columns: 1,
+      });
+      return;
+    }
+
+    console.log(`[/start] Showing normal start menu`);
+    // User is a member or no support chat is configured
+    const media = config.startImage || "https://placehold.co/800x300?text=Notes+Bot";
+    const supportLink = config.supportChatId ? await generateSupportChatInviteLink(config.supportChatId) : null;
+    const updatesLink = config.updatesChatId && String(config.updatesChatId).startsWith("@") ? `https://t.me/${String(config.updatesChatId).replace(/^@/,"")}` : null;
+
+    await sendTelegramMessage(chatId, getStartMenuCaption(), {
+      media,
+      buttons: buildStartMenuKeyboard(telegramBotUsername, { supportLink, updatesLink }),
+      columns: 2,
+    });
+    return;
+  }
+
   if (/^\/whoami\b/i.test(rawText)) {
-    const sender = await message.getSender().catch(() => undefined);
-    const senderId = sender ? String(sender.id || sender?.userId || "(unknown)") : "(unknown)";
-    await sendTelegramMessage(chatId, `Your Telegram id is: ${senderId}\n\nTo become an admin, add this id to TELEGRAM_ADMIN_IDS in NOTES_BE/.env (comma-separated).`);
+    await sendTelegramMessage(chatId, `Your Telegram id is: ${message.from?.id || "(unknown)"}\n\nTo become an admin, ask an existing admin to add this id with /addadmin or /setadmins.`);
     return;
   }
 
-  // Admin-only commands
-  if (
-    /^\/setlog\b/i.test(rawText) ||
-    /^\/setstartimage\b/i.test(rawText) ||
-    /^\/(enablebot|disablebot|showconfig|adminhelp)\b/i.test(rawText)
-  ) {
-    const sender = await message.getSender().catch(() => undefined);
-    if (!isAdmin(sender)) {
+  if (/^\/set\b/i.test(rawText) || /^\/(enablebot|disablebot|showconfig|adminhelp|addadmin|removeadmin)\b/i.test(rawText)) {
+    if (!(await isAdminUser(message.from?.id))) {
       await sendTelegramMessage(chatId, "You are not authorized to run admin commands.");
       return;
     }
 
-    if (/^\/setlog\b/i.test(rawText)) {
+    if (/^\/set\b/i.test(rawText)) {
+      // /set <param> <value>
       const parts = rawText.split(/\s+/);
-      const arg = parts[1];
-      if (!arg) {
-        await sendTelegramMessage(chatId, "Usage: /setlog <@channelusername|t.me/link|numeric_id>");
+      const param = parts[1] ? parts[1].toLowerCase() : null;
+      let value = parts.slice(2).join(" ").trim();
+
+      // if no explicit value, use reply_to_message if present
+      if (!value && message.reply_to_message) {
+        const reply = message.reply_to_message;
+        // prefer a username/link in the replied text
+        if (reply.text && reply.text.trim()) value = reply.text.trim();
+        // fallback to forwarded chat or chat username
+        if (!value && reply.forward_from_chat?.username) value = `@${reply.forward_from_chat.username}`;
+        if (!value && reply.forward_from?.id) value = String(reply.forward_from.id);
+        if (!value && reply.chat?.username) value = `@${reply.chat.username}`;
+      }
+
+      if (!param) {
+        await sendTelegramMessage(chatId, "Usage: /set <param> <value>\nSupported params: log, support, updates, startimage, admins, enabled");
         return;
       }
 
-      const resolved = await resolveToBotChatId(telegramClient, arg);
-      if (!resolved) {
-        await sendTelegramMessage(chatId, `Could not resolve '${arg}'. Make sure the bot can access the channel or provide numeric id.`);
+      if (param === "log") {
+        if (!value) {
+          await sendTelegramMessage(chatId, "Provide a channel id, @username or link (or reply to a message containing it).");
+          return;
+        }
+        const resolved = await resolveTelegramChatId(value);
+        if (!resolved) {
+          await sendTelegramMessage(chatId, `Could not resolve '${value}'.`);
+          return;
+        }
+        await updateTelegramBotConfig({ logChatId: resolved });
+        await sendTelegramMessage(chatId, `Updated log chat id = ${resolved}`);
         return;
       }
 
-      const ok = setEnvVar("TELEGRAM_LOG_CHAT_ID", resolved);
-      if (ok) {
-        await sendTelegramMessage(chatId, `Updated TELEGRAM_LOG_CHAT_ID = ${resolved}`);
-      } else {
-        await sendTelegramMessage(chatId, `Failed to update .env`);
+      if (param === "support") {
+        if (!value) {
+          await sendTelegramMessage(chatId, "Provide a group id, @username or link (or reply to a message containing it).");
+          return;
+        }
+        const resolved = await resolveTelegramChatId(value);
+        if (!resolved) {
+          await sendTelegramMessage(chatId, `Could not resolve '${value}'.`);
+          return;
+        }
+        await updateTelegramBotConfig({ supportChatId: resolved });
+        await sendTelegramMessage(chatId, `Updated support group id = ${resolved}`);
+        return;
       }
 
+      if (param === "updates") {
+        if (!value) {
+          await sendTelegramMessage(chatId, "Provide a channel id or @username (or reply to a message from the channel).");
+          return;
+        }
+        // store raw string (username or id)
+        await updateTelegramBotConfig({ updatesChatId: value });
+        await sendTelegramMessage(chatId, `Updated updates channel = ${value}`);
+        return;
+      }
+
+      if (param === "startimage") {
+        if (!value) {
+          await sendTelegramMessage(chatId, "Provide an image URL (or reply to a message with the image).");
+          return;
+        }
+        await updateTelegramBotConfig({ startImage: value });
+        await sendTelegramMessage(chatId, "Updated start image.");
+        return;
+      }
+
+      if (param === "admins") {
+        if (!value) {
+          await sendTelegramMessage(chatId, "Provide a comma-separated list of admin ids.");
+          return;
+        }
+        const adminIds = value.split(",").map((id) => id.trim()).filter(Boolean);
+        await setTelegramAdminIds(adminIds);
+        await sendTelegramMessage(chatId, `Updated admin list in DB (${adminIds.length} ids).`);
+        return;
+      }
+
+      if (param === "enabled") {
+        const v = String(value || "").trim().toLowerCase();
+        const next = ["true","1","yes","on"].includes(v);
+        await updateTelegramBotConfig({ enabled: next });
+        await sendTelegramMessage(chatId, `Bot enabled = ${next}`);
+        if (next && !telegramBot) await startTelegramBot();
+        if (!next) await stopTelegramBot();
+        return;
+      }
+
+      await sendTelegramMessage(chatId, "Unknown parameter. Supported: log, support, updates, startimage, admins, enabled");
       return;
     }
 
-    if (/^\/setstartimage\b/i.test(rawText)) {
-      const parts = rawText.split(/\s+/);
-      const arg = parts[1];
-      if (!arg) {
-        await sendTelegramMessage(chatId, "Usage: /setstartimage <image_url>");
+    // keep some other admin commands
+    if (/^\/addadmin\b/i.test(rawText)) {
+      const adminId = rawText.split(/\s+/)[1];
+      if (!adminId) {
+        await sendTelegramMessage(chatId, "Usage: /addadmin <id>");
         return;
       }
-      const ok = setEnvVar("NOTES_BOT_START_IMAGE", arg);
-      if (ok) await sendTelegramMessage(chatId, `Updated NOTES_BOT_START_IMAGE`);
-      else await sendTelegramMessage(chatId, `Failed to update .env`);
+
+      await addTelegramAdminId(adminId);
+      await sendTelegramMessage(chatId, `Added admin id ${adminId}`);
+      return;
+    }
+
+    if (/^\/removeadmin\b/i.test(rawText)) {
+      const adminId = rawText.split(/\s+/)[1];
+      if (!adminId) {
+        await sendTelegramMessage(chatId, "Usage: /removeadmin <id>");
+        return;
+      }
+
+      await removeTelegramAdminId(adminId);
+      await sendTelegramMessage(chatId, `Removed admin id ${adminId}`);
       return;
     }
 
     if (/^\/enablebot\b/i.test(rawText)) {
-      const ok = setEnvVar("TELEGRAM_BOT_ENABLED", "true");
-      if (ok) {
-        await sendTelegramMessage(chatId, "Bot enabled.");
-        // try to start if not connected
-        if (!telegramClient) await startTelegramBot();
-      } else {
-        await sendTelegramMessage(chatId, "Failed to update .env");
+      await updateTelegramBotConfig({ enabled: true });
+      await sendTelegramMessage(chatId, "Bot enabled.");
+      if (!telegramBot) {
+        await startTelegramBot();
       }
       return;
     }
 
     if (/^\/disablebot\b/i.test(rawText)) {
-      const ok = setEnvVar("TELEGRAM_BOT_ENABLED", "false");
-      if (ok) {
-        await sendTelegramMessage(chatId, "Bot disabled.");
-        await stopTelegramBot();
-      } else {
-        await sendTelegramMessage(chatId, "Failed to update .env");
-      }
+      await updateTelegramBotConfig({ enabled: false });
+      await sendTelegramMessage(chatId, "Bot disabled.");
+      await stopTelegramBot();
       return;
     }
 
     if (/^\/showconfig\b/i.test(rawText)) {
-      const cfg = getTelegramConfig();
+      const cfg = await getTelegramConfig();
       const out = [
         `Bot Enabled: ${cfg.enabled}`,
-        `Log Chat ID: ${process.env.TELEGRAM_LOG_CHAT_ID || "(not set)"}`,
-        `Start Image: ${process.env.NOTES_BOT_START_IMAGE || "(not set)"}`,
-        `Admin IDs: ${maskAdminList()}`,
+        `Log Chat ID: ${cfg.logChatId || "(not set)"}`,
+        `Support Chat ID: ${cfg.supportChatId || "(not set)"}`,
+        `Updates Channel: ${cfg.updatesChatId || "(not set)"}`,
+        `Start Image: ${cfg.startImage || "(not set)"}`,
+        `Admin IDs: ${cfg.adminIds.length ? cfg.adminIds.map((id) => String(id)).join(", ") : "(not set)"}`,
       ].join("\n");
 
       await sendTelegramMessage(chatId, out);
@@ -286,11 +647,12 @@ const handleTelegramMessage = async (event) => {
       const help = [
         "Admin commands:",
         "",
-        "/setlog <@username|t.me/link|id> — set log channel",
-        "/setstartimage <url> — set start image shown in menu",
-        "/enablebot — enable bot in .env and start it",
-        "/disablebot — disable bot in .env and stop it",
-        "/showconfig — show basic config (admin ids masked)",
+        "/set <param> <value> — set a configuration parameter. Supported params: log, support, updates, startimage, admins, enabled",
+        "/addadmin <id> — add one admin id",
+        "/removeadmin <id> — remove one admin id",
+        "/enablebot — enable bot in DB and start it",
+        "/disablebot — disable bot in DB and stop it",
+        "/showconfig — show basic config",
       ].join("\n");
 
       await sendTelegramMessage(chatId, help);
@@ -299,7 +661,7 @@ const handleTelegramMessage = async (event) => {
   }
 
   if (/^\/search(?:@\w+)?/i.test(rawText)) {
-    const query = extractSearchQuery(rawText);
+    const query = rawText.replace(/^\/search(?:@\w+)?\s*/i, "").trim();
 
     if (!query) {
       await sendTelegramMessage(chatId, "Use /search followed by a subject, semester, branch, or keyword.");
@@ -311,126 +673,99 @@ const handleTelegramMessage = async (event) => {
 
     await sendTelegramMessage(chatId, responseText);
   }
+  } catch (err) {
+    console.error("Error handling telegram message:", err);
+    try {
+      await notifyLogChannel(`Telegram handler error: ${err.stack || err.message}`);
+    } catch (e) {
+      // ignore logging errors
+    }
+  }
 };
 
 const startTelegramBot = async () => {
-  const { enabled, apiId, apiHash, botToken, sessionString } = getTelegramConfig();
+  await ensureTelegramBotConfig();
+  const { enabled, botToken } = await getTelegramConfig();
 
   if (!enabled) {
-    console.log("Telegram bot is disabled. Set TELEGRAM_API_ID, TELEGRAM_API_HASH, and TELEGRAM_BOT_TOKEN to enable it.");
+    console.log("Telegram bot is disabled. Store settings in the database and keep only TELEGRAM_BOT_TOKEN in env.");
     return;
   }
 
-  if (telegramClient) {
+  if (telegramBot) {
     return;
   }
 
-  telegramClient = new TelegramClient(new StringSession(sessionString), apiId, apiHash, {
-    connectionRetries: 5,
+  telegramBot = new TelegramBot(botToken, {
+    polling: {
+      autoStart: true,
+      params: {
+        timeout: 20,
+      },
+    },
   });
 
-  if (!telegramHandlerAttached) {
-    telegramClient.addEventHandler(handleTelegramMessage, new NewMessage({ incoming: true }));
-    telegramHandlerAttached = true;
-  }
+  telegramBot.on("message", (msg) => {
+    handleTelegramMessage(msg).catch(async (err) => {
+      console.error("Telegram message handler error:", err);
+      try {
+        await notifyLogChannel(`Telegram message handler error: ${err.stack || err.message}`);
+      } catch (e) {
+        // ignore
+      }
+    });
+  });
 
-  await telegramClient.start({ botAuthToken: botToken });
-  console.log("Telegram bot connected with GramJS.");
+  telegramBot.on("callback_query", (q) => {
+    handleTelegramCallbackQuery(q).catch(async (err) => {
+      console.error("Telegram callback handler error:", err);
+      try {
+        await notifyLogChannel(`Telegram callback handler error: ${err.stack || err.message}`);
+      } catch (e) {
+        // ignore
+      }
+    });
+  });
+  telegramBot.on("polling_error", (error) => {
+    console.error("Telegram polling error:", error.message);
+  });
+
+  const me = await telegramBot.getMe().catch(() => undefined);
+  telegramBotUsername = me?.username || "";
+
+  console.log("Telegram bot connected with Bot API.");
 };
 
 const stopTelegramBot = async () => {
-  if (!telegramClient) {
+  if (!telegramBot) {
     return;
   }
 
-  await telegramClient.disconnect().catch((error) => {
-    console.error("Telegram bot disconnect error:", error.message);
-  });
+  telegramBot.removeAllListeners();
 
-  telegramClient = undefined;
-  telegramHandlerAttached = false;
+  try {
+    await telegramBot.stopPolling();
+  } catch (error) {
+    console.error("Telegram bot stopPolling error:", error.message);
+  }
+
+  telegramBot = undefined;
+  telegramBotUsername = "";
 };
 
-const getTelegramBotStatus = () => ({
-  enabled: getTelegramConfig().enabled,
-  connected: Boolean(telegramClient),
-  hasLogChannel: Boolean(getTelegramConfig().logChatId),
-});
+const getTelegramBotStatus = async () => {
+  const cfg = await getTelegramConfig();
+
+  return {
+    enabled: cfg.enabled,
+    connected: Boolean(telegramBot),
+    hasLogChannel: Boolean(cfg.logChatId),
+  };
+};
 
 export {
   getTelegramBotStatus,
   sendTelegramMessage,
   startTelegramBot,
   stopTelegramBot,
-};
-
-const envFilePath = path.resolve(process.cwd(), "NOTES_BE/.env");
-
-const setEnvVar = (key, value) => {
-  try {
-    let content = "";
-    if (fs.existsSync(envFilePath)) {
-      content = fs.readFileSync(envFilePath, "utf8");
-    }
-
-    const lines = content.split(/\r?\n/);
-    const keyIndex = lines.findIndex((l) => l.trim().startsWith(key + "="));
-
-    const entry = `${key}=${value}`;
-    if (keyIndex >= 0) {
-      lines[keyIndex] = entry;
-    } else {
-      if (content && !content.endsWith("\n")) lines.push("");
-      lines.push(entry);
-    }
-
-    fs.writeFileSync(envFilePath, lines.join("\n"), "utf8");
-    process.env[key] = value;
-    return true;
-  } catch (err) {
-    console.error("Failed to write env file:", err?.message || err);
-    return false;
-  }
-};
-
-const getAdminIds = () => {
-  const raw = process.env.TELEGRAM_ADMIN_IDS || "";
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
-};
-
-const isAdmin = (sender) => {
-  if (!sender) return false;
-  const admins = getAdminIds();
-  const senderId = String(sender.id || sender?.userId || "");
-  return admins.includes(senderId);
-};
-
-const maskAdminList = () => {
-  const admins = getAdminIds();
-  if (!admins.length) return "(not set)";
-  return admins
-    .map((id) => {
-      if (id.length <= 4) return id.replace(/./g, "*");
-      return id.slice(0, 2) + id.slice(2, -2).replace(/./g, "*") + id.slice(-2);
-    })
-    .join(", ");
-};
-
-const resolveToBotChatId = async (client, target) => {
-  // Accept numeric ids, -100 prefixed ids, @username or t.me links
-  if (!target) return null;
-  const t = String(target).trim();
-  if (/^-?\d+$/.test(t)) {
-    // numeric id
-    if (t.startsWith("-100")) return t;
-    return `-100${t.replace(/^-/,'')}`;
-  }
-
-  try {
-    const entity = await client.getEntity(t);
-    if (!entity) return null;
-    return `-100${String(entity.id)}`;
-  } catch (err) {
-    return null;
-  }
 };
